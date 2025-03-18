@@ -44,8 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .without_v07_checks()
         .route("/", get(index))
-        .route("/blogs/{id}", get(get_blog))
-        .route("/blogs", get(get_blogs).post(create_blog))
+        .merge(routes_blogs())
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(Extension(pool));
 
@@ -55,6 +54,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
+}
+
+fn routes_blogs() -> Router {
+    Router::new()
+        .route("/blogs/{id}", get(get_blog))
+        .route("/blogs", get(get_blogs).post(create_blog))
 }
 
 async fn index() -> impl IntoResponse {

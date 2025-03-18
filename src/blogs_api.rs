@@ -22,19 +22,20 @@ pub struct CreateBlogRequestPayload {
 
 /// Create a new blog
 ///
-/// Craetes a new blog in the database
+/// Creates a new blog in the database, returns the created blog
 #[utoipa::path(post, path = "/blogs", request_body = CreateBlogRequestPayload,
     responses(
-            (status = 200, description = "Blog created successfully", body = i32),
+            (status = 200, description = "Blog created successfully", body = Blog),
             (status = 500, description = "Internal server error")
         )
 )]
 pub async fn create_blog(
     Extension(pool): Extension<Pool<Postgres>>,
     Json(body): Json<CreateBlogRequestPayload>,
-) -> Result<Json<i32>, StatusCode> {
-    let blog = sqlx::query_scalar!(
-        "INSERT INTO blogs (title, author, url, likes) VALUES ($1, $2, $3, $4) RETURNING id",
+) -> Result<Json<Blog>, StatusCode> {
+    let blog = sqlx::query_as!(
+        Blog,
+        "INSERT INTO blogs (title, author, url, likes) VALUES ($1, $2, $3, $4) RETURNING id, title, author, url, likes",
         body.title,
         body.author,
         body.url,
@@ -47,7 +48,7 @@ pub async fn create_blog(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    info!("Created Blog with id={}", blog);
+    info!("Created Blog with id={}", blog.id);
 
     Ok(Json(blog))
 }
@@ -76,6 +77,38 @@ pub async fn get_blogs(
 }
 
 /// Get one blog
+///
+/// Returns a blog from the database given the id
+#[utoipa::path(
+    get,
+    path = "/blogs/:id",
+    responses(
+        (status = 200, description = "Blog returned successfully", body = Blog),
+        (status = 404, description = "Blog not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_blog(
+    Extension(pool): Extension<Pool<Postgres>>,
+    Path(id): Path<i32>,
+) -> Result<Json<Blog>, StatusCode> {
+    let blog = sqlx::query_as!(
+        Blog,
+        "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?; // TODO better error handling
+    info!(
+        "Fetched one blog with id={} and author={} from database",
+        blog.id, blog.author
+    );
+
+    Ok(Json(blog))
+}
+
+/// Update one blog
 ///
 /// Returns a blog from the database given the id
 #[utoipa::path(
