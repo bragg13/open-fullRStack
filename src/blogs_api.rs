@@ -19,6 +19,13 @@ pub struct CreateBlogRequestPayload {
     url: String,
     likes: Option<i32>,
 }
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct UpdateBlogRequestPayload {
+    title: Option<String>,
+    author: Option<String>,
+    url: Option<String>,
+    likes: Option<i32>,
+}
 
 /// Create a new blog
 ///
@@ -81,7 +88,7 @@ pub async fn get_blogs(
 /// Returns a blog from the database given the id
 #[utoipa::path(
     get,
-    path = "/blogs/:id",
+    path = "/blogs/{id}",
     responses(
         (status = 200, description = "Blog returned successfully", body = Blog),
         (status = 404, description = "Blog not found"),
@@ -112,21 +119,27 @@ pub async fn get_blog(
 ///
 /// Returns a blog from the database given the id
 #[utoipa::path(
-    get,
-    path = "/blogs/:id",
+    put,
+    path = "/blogs/{id}",
+    request_body = UpdateBlogRequestPayload,
     responses(
-        (status = 200, description = "Blog returned successfully", body = Blog),
+        (status = 200, description = "Blog updated successfully", body = Blog),
         (status = 404, description = "Blog not found"),
         (status = 500, description = "Internal server error")
     )
 )]
-pub async fn get_blog(
+pub async fn update_blog(
     Extension(pool): Extension<Pool<Postgres>>,
     Path(id): Path<i32>,
+    Json(body): Json<UpdateBlogRequestPayload>,
 ) -> Result<Json<Blog>, StatusCode> {
     let blog = sqlx::query_as!(
         Blog,
-        "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
+        "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
+        body.title,
+        body.author,
+        body.url,
+        body.likes,
         id
     )
     .fetch_one(&pool)

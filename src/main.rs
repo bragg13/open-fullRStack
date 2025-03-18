@@ -3,7 +3,10 @@ use axum::{
     routing::get,
     Extension, Router,
 };
-use blogs_api::{create_blog, get_blog, get_blogs, Blog, CreateBlogRequestPayload};
+use blogs_api::{
+    create_blog, get_blog, get_blogs, update_blog, Blog, CreateBlogRequestPayload,
+    UpdateBlogRequestPayload,
+};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
@@ -17,10 +20,11 @@ mod blogs_api;
     paths(
         blogs_api::get_blogs,
         blogs_api::get_blog,
+        blogs_api::update_blog,
         blogs_api::create_blog
     ),
     components(
-        schemas(Blog, CreateBlogRequestPayload)
+        schemas(Blog, CreateBlogRequestPayload, UpdateBlogRequestPayload)
     ),
     tags(
         (name = "blogs_api", description = "Blog management API")
@@ -58,7 +62,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 fn routes_blogs() -> Router {
     Router::new()
-        .route("/blogs/{id}", get(get_blog))
+        .route("/blogs/{id}", get(get_blog).put(update_blog))
         .route("/blogs", get(get_blogs).post(create_blog))
 }
 
