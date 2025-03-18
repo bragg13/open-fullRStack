@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Extension, Json};
+use axum::{extract::Path, http::StatusCode, Extension, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use tracing::{error, info};
@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct Blog {
-    id: i64,
+    id: i32,
     title: String,
     author: String,
     url: String,
@@ -17,7 +17,7 @@ pub struct CreateBlogRequestPayload {
     title: String,
     author: String,
     url: String,
-    likes: i32,
+    likes: Option<i32>,
 }
 
 /// Create a new blog
@@ -47,7 +47,7 @@ pub async fn create_blog(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    info!("Successfully created `Blog` with id={}", blog);
+    info!("Created Blog with id={}", blog);
 
     Ok(Json(blog))
 }
@@ -70,7 +70,39 @@ pub async fn get_blogs(
         .fetch_all(&pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?; // TODO better error handling
-    info!("Successfully fetched `Blog` data from database");
+    info!("Fetched {} blogs from database", blogs.len());
 
     Ok(Json(blogs))
+}
+
+/// Get one blog
+///
+/// Returns a blog from the database given the id
+#[utoipa::path(
+    get,
+    path = "/blogs/:id",
+    responses(
+        (status = 200, description = "Blog returned successfully", body = Blog),
+        (status = 404, description = "Blog not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_blog(
+    Extension(pool): Extension<Pool<Postgres>>,
+    Path(id): Path<i32>,
+) -> Result<Json<Blog>, StatusCode> {
+    let blog = sqlx::query_as!(
+        Blog,
+        "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?; // TODO better error handling
+    info!(
+        "Fetched one blog with id={} and author={} from database",
+        blog.id, blog.author
+    );
+
+    Ok(Json(blog))
 }
