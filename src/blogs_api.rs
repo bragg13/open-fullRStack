@@ -48,20 +48,25 @@ pub async fn create_blog(
     get,
     path = "/blogs",
     responses(
-        (status = 500, description = "Internal server error")
+        (status = 500, description = "Internal server error", body=ClientError),
+        (status = 200, description = "Blogs retrieved successfully", body=[Blog])
     )
 )]
-pub async fn get_blogs(
-    Extension(pool): Extension<Pool<Postgres>>,
-) -> Result<Json<Vec<Blog>>, StatusCode> {
+pub async fn get_blogs(Extension(pool): Extension<Pool<Postgres>>) -> impl IntoResponse {
     match sqlx::query_as!(Blog, "SELECT id, title, author, url, likes FROM blogs")
         .fetch_all(&pool)
         .await
     {
-        Ok(blogs) => Ok(Json(blogs)),
+        Ok(blogs) => (StatusCode::OK, Json(blogs)).into_response(),
         Err(e) => {
             error!("Failed to retrieve blogs: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ClientError {
+                    message: "Failed to retrieve blogs".to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -73,13 +78,14 @@ pub async fn get_blogs(
     get,
     path = "/blogs/{id}",
     responses(
-        (status = 500, description = "Internal server error")
+        (status = 500, description = "Internal server error", body=ClientError),
+        (status = 200, description = "Blog retrieved successfully", body=Blog)
     )
 )]
 pub async fn get_blog(
     Extension(pool): Extension<Pool<Postgres>>,
     Path(id): Path<i32>,
-) -> Result<Json<Blog>, StatusCode> {
+) -> impl IntoResponse {
     match sqlx::query_as!(
         Blog,
         "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
@@ -88,10 +94,16 @@ pub async fn get_blog(
     .fetch_one(&pool)
     .await
     {
-        Ok(blog) => Ok(Json(blog)),
+        Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
         Err(e) => {
             error!("Failed to retrieve blog with id={}: {}", id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ClientError {
+                    message: "Failed to retrieve blog".to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -104,14 +116,15 @@ pub async fn get_blog(
     path = "/blogs/{id}",
     request_body = UpdateBlogRequestPayload,
     responses(
-        (status = 500, description = "Failed to update blog")
+        (status = 500, description = "Internal server error", body=ClientError),
+        (status = 200, description = "Blog updated successfully", body=Blog)
     )
 )]
 pub async fn update_blog(
     Extension(pool): Extension<Pool<Postgres>>,
     Path(id): Path<i32>,
     Json(body): Json<UpdateBlogRequestPayload>,
-) -> Result<Json<Blog>, StatusCode> {
+) -> impl IntoResponse {
     match sqlx::query_as!(
         Blog,
         "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
@@ -123,10 +136,16 @@ pub async fn update_blog(
     )
     .fetch_one(&pool)
     .await {
-        Ok(blog) => Ok(Json(blog)),
+        Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
         Err(e) => {
             error!("Failed to update blog with id={}: {}", id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ClientError {
+                    message: "Failed to update blog".to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -138,21 +157,28 @@ pub async fn update_blog(
     delete,
     path = "/blogs/{id}",
     responses(
-        (status = 500, description = "Failed to delete blog")
+        (status = 500, description = "Failed to delete blog"),
+        (status = 200, description = "Blog deleted successfully")
     )
 )]
 pub async fn delete_blog(
     Extension(pool): Extension<Pool<Postgres>>,
     Path(id): Path<i32>,
-) -> Result<Json<i32>, StatusCode> {
+) -> impl IntoResponse {
     match sqlx::query!("DELETE FROM blogs WHERE id = $1", id)
         .execute(&pool)
         .await
     {
-        Ok(_) => Ok(Json(id)),
+        Ok(_) => (StatusCode::OK, Json({})).into_response(),
         Err(e) => {
             error!("Failed to delete blog with id={}: {}", id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ClientError {
+                    message: "Failed to delete blog".to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
