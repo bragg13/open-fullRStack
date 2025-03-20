@@ -19,6 +19,8 @@ utoipa = { version = "5.3.1", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 watch = "0.2.3"
 tower-http = { version = "0.6.2", features = ["fs"] }
+serde_json = "1.0.140"
+clippy = "0.0.302"
 
 [dev-dependencies]
 anyhow = "1"
