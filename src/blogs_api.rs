@@ -1,25 +1,34 @@
-use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
-use sqlx::{Pool, Postgres};
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use tracing::error;
 
 use crate::{
+    config::AppStateInner,
     errors::ClientError,
-    models::{Blog, CreateBlogRequestPayload, UpdateBlogRequestPayload},
+    models::{Blog, UpdateBlogRequestPayload},
 };
 
 /// Create a new blog
 ///
 /// Creates a new blog in the database, returns the created blog
-#[utoipa::path(post, path = "/blogs", request_body = CreateBlogRequestPayload,
+#[utoipa::path(post, path = "/blogs", request_body = Blog,
     responses(
             (status = 500, description = "Internal server error", body=ClientError),
             (status = 201, description = "Blog created successfully", body=Blog)
         )
 )]
 pub async fn create_blog(
-    Extension(pool): Extension<Pool<Postgres>>,
-    Json(body): Json<CreateBlogRequestPayload>,
+    State(state): State<Arc<AppStateInner>>,
+    Json(body): Json<Blog>,
 ) -> impl IntoResponse {
+    let pool = &state.pool;
+
     match sqlx::query_as!(
         Blog,
         "INSERT INTO blogs (title, author, url, likes) VALUES ($1, $2, $3, $4) RETURNING id, title, author, url, likes",
@@ -28,7 +37,7 @@ pub async fn create_blog(
         body.url,
         body.likes
     )
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await
     {
         Ok(blog) =>
@@ -52,9 +61,11 @@ pub async fn create_blog(
         (status = 200, description = "Blogs retrieved successfully", body=[Blog])
     )
 )]
-pub async fn get_blogs(Extension(pool): Extension<Pool<Postgres>>) -> impl IntoResponse {
+pub async fn get_blogs(State(state): State<Arc<AppStateInner>>) -> impl IntoResponse {
+    let pool = &state.pool;
+
     match sqlx::query_as!(Blog, "SELECT id, title, author, url, likes FROM blogs")
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
     {
         Ok(blogs) => (StatusCode::OK, Json(blogs)).into_response(),
@@ -83,15 +94,16 @@ pub async fn get_blogs(Extension(pool): Extension<Pool<Postgres>>) -> impl IntoR
     )
 )]
 pub async fn get_blog(
-    Extension(pool): Extension<Pool<Postgres>>,
+    State(state): State<Arc<AppStateInner>>,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
+    let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
         "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await
     {
         Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
@@ -121,10 +133,11 @@ pub async fn get_blog(
     )
 )]
 pub async fn update_blog(
-    Extension(pool): Extension<Pool<Postgres>>,
+    State(state): State<Arc<AppStateInner>>,
     Path(id): Path<i32>,
     Json(body): Json<UpdateBlogRequestPayload>,
 ) -> impl IntoResponse {
+    let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
         "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
@@ -134,7 +147,7 @@ pub async fn update_blog(
         body.likes,
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await {
         Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
         Err(e) => {
@@ -162,11 +175,12 @@ pub async fn update_blog(
     )
 )]
 pub async fn delete_blog(
-    Extension(pool): Extension<Pool<Postgres>>,
+    State(state): State<Arc<AppStateInner>>,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
+    let pool = &state.pool;
     match sqlx::query!("DELETE FROM blogs WHERE id = $1", id)
-        .execute(&pool)
+        .execute(pool)
         .await
     {
         Ok(_) => (StatusCode::OK, Json({})).into_response(),

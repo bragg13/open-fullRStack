@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, title, author, url, likes FROM blogs",
+  "query": "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,13 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4"
+      ]
     },
     "nullable": [
       false,
@@ -40,5 +46,5 @@
       true
     ]
   },
-  "hash": "ae30c7d43c6ebfb542ac388fab922f63cfd4a0cbb54340916f346baa6a9e6fcc"
+  "hash": "90afd62f33f8a49b242630d51c410233708e8f7a46b4e7fd3bcad325d6c6f4d3"
 }

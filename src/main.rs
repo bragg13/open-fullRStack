@@ -1,14 +1,13 @@
 use axum::{
     response::{Html, IntoResponse},
     routing::get,
-    Extension, Router,
+    Router,
 };
 use blogs_api::{create_blog, delete_blog, get_blog, get_blogs, update_blog};
-use config::DbConfig;
+use config::AppStateInner;
 use dotenvy::dotenv;
-use models::{Blog, CreateBlogRequestPayload, UpdateBlogRequestPayload};
-use sqlx::{postgres::PgPoolOptions, Error, Pool, Postgres};
-use std::net::SocketAddr;
+use models::{Blog, UpdateBlogRequestPayload};
+use std::{net::SocketAddr, sync::Arc};
 use tracing::{error, info, Level};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -27,7 +26,7 @@ mod models;
         blogs_api::create_blog
     ),
     components(
-        schemas(Blog, CreateBlogRequestPayload, UpdateBlogRequestPayload)
+        schemas(Blog,  UpdateBlogRequestPayload)
     ),
     tags(
         (name = "blogs_api", description = "Blog management API")
@@ -39,15 +38,10 @@ struct ApiDoc;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // for logging
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+
     dotenv().ok();
 
-    let db_url = std::env::var("DATABASE_URL").map_err(|e| {
-        error!("Failed to read DATABASE_URL: {} ", e);
-        e
-    })?;
-    let db_config = DbConfig { url: db_url };
-    let pool = connect_to_postgres(db_config).await?;
-    let app = app(pool);
+    let app = app().await;
 
     // starting the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
@@ -61,45 +55,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn connect_to_postgres(config: DbConfig) -> Result<Pool<Postgres>, Error> {
-    match PgPoolOptions::new().connect(&config.url).await {
-        Ok(pool) => {
-            info!("Connected to Database.");
-            Ok(pool)
-        }
-        Err(e) => Err(e),
-    }
-}
+async fn app() -> Router {
+    let state = Arc::new(AppStateInner::new().await);
 
-fn app(pool: Pool<Postgres>) -> Router {
     Router::new()
         .without_v07_checks()
         .route("/", get(index))
-        .merge(router_blogs())
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .layer(Extension(pool))
-}
-
-fn router_blogs() -> Router {
-    Router::new()
         .route(
             "/blogs/{id}",
             get(get_blog).put(update_blog).delete(delete_blog),
         )
         .route("/blogs", get(get_blogs).post(create_blog))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .with_state(state)
 }
 
 async fn index() -> impl IntoResponse {
     Html("<h1>Ciao mondo!</h1>")
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Request;
+    use rstest::*;
 
-//     #[test]
-//     fn index_works() {
-//         let result = add(2, 2);
-//         assert_eq!(result, 4);
-//     }
-// }
+    #[derive(Clone)]
+    struct AppState {}
+
+    macro_rules! block_on {
+        ($async_expr:expr) => {{
+            tokio::task::block_in_place(|| {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on($async_expr)
+            })
+        }};
+    }
+
+    // #[fixture]
+    // #[once]
+    // fn test_router() -> Router {
+    //     dotenv().ok();
+    //     let db_url = std::env::var("DATABASE_URL_TEST").unwrap();
+    //     let db_config = DbConfig { url: db_url };
+    //     let pool = block_on!(async { connect_to_postgres(db_config).await.unwrap() });
+    //     app(pool)
+    // }
+    #[rstest]
+    #[tokio::test]
+    async fn test_get_blog() {
+        // let router = test_router().with_state(());
+        // let response = router
+        //     .oneshot(
+        //         Request::builder()
+        //             .uri("/blogs/1")
+        //             .body(axum::body::Body::empty())
+        //             .unwrap(),
+        //     )
+        //     .await
+        //     .unwrap();
+        // assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    // async fn not_found() {
+    //     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    //     let body = response.into_body().collect().await.unwrap().to_bytes();
+    //     assert!(body.is_empty());
+    // }
+}

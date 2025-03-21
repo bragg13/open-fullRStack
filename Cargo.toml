@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.44.1", features = ["full", "macros", "rt-multi-thread"] }
+tokio = { version = "1.44.1", features = [
+    "full",
+    "macros",
+    "rt-multi-thread",
+    "test-util",
+] }
 sqlx = { version = "0.8.3", features = [
     "runtime-tokio",
     "postgres",
@@ -25,3 +30,4 @@ clippy = "0.0.302"
 [dev-dependencies]
 anyhow = "1"
 httpc-test = "0.1.10"
+rstest = "0.25.0"

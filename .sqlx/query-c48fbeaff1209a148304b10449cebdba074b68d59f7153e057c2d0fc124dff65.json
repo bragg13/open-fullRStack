@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, title, author, url, likes FROM blogs",
+  "query": "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Int4"
+      ]
     },
     "nullable": [
       false,
@@ -40,5 +42,5 @@
       true
     ]
   },
-  "hash": "ae30c7d43c6ebfb542ac388fab922f63cfd4a0cbb54340916f346baa6a9e6fcc"
+  "hash": "c48fbeaff1209a148304b10449cebdba074b68d59f7153e057c2d0fc124dff65"
 }

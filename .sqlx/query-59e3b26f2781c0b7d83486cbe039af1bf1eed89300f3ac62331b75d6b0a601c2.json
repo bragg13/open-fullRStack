@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, title, author, url, likes FROM blogs",
+  "query": "INSERT INTO blogs (title, author, url, likes) VALUES ($1, $2, $3, $4) RETURNING id, title, author, url, likes",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,12 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int4"
+      ]
     },
     "nullable": [
       false,
@@ -40,5 +45,5 @@
       true
     ]
   },
-  "hash": "ae30c7d43c6ebfb542ac388fab922f63cfd4a0cbb54340916f346baa6a9e6fcc"
+  "hash": "59e3b26f2781c0b7d83486cbe039af1bf1eed89300f3ac62331b75d6b0a601c2"
 }
