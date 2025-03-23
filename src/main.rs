@@ -41,7 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     dotenv().ok();
 
+    let state = Arc::new(AppStateInner::new().await);
     let app = app().await;
+    let app = app.with_state(state);
 
     // starting the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
@@ -55,9 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn app() -> Router {
-    let state = Arc::new(AppStateInner::new().await);
-
+async fn app() -> Router<Arc<AppStateInner>> {
     Router::new()
         .without_v07_checks()
         .route("/", get(index))
@@ -67,7 +67,6 @@ async fn app() -> Router {
         )
         .route("/blogs", get(get_blogs).post(create_blog))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .with_state(state)
 }
 
 async fn index() -> impl IntoResponse {
@@ -76,50 +75,57 @@ async fn index() -> impl IntoResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use axum::http::Request;
+    use crate::{app, config::AppStateInner};
+    use axum::http::StatusCode;
+    use dotenvy::dotenv;
+    use httpc_test::{self, Client};
     use rstest::*;
+    use std::{sync::Arc, time::Duration};
+    use tokio::{net::TcpListener, sync::OnceCell, time::sleep};
+    static TEST_CLIENT: OnceCell<Arc<Client>> = OnceCell::const_new();
 
-    #[derive(Clone)]
-    struct AppState {}
+    async fn get_test_client() -> Arc<Client> {
+        async fn setup() -> Arc<Client> {
+            // Bind the server to a test port.
+            let listener = TcpListener::bind("127.0.0.1:8081")
+                .await
+                .expect("Failed to bind to test port");
 
-    macro_rules! block_on {
-        ($async_expr:expr) => {{
-            tokio::task::block_in_place(|| {
-                let handle = tokio::runtime::Handle::current();
-                handle.block_on($async_expr)
-            })
-        }};
+            // Create the state and app.
+            dotenv().ok();
+            let state = Arc::new(AppStateInner::new().await);
+            let app = app().await.with_state(state);
+
+            // Spawn the server in the background.
+            tokio::spawn(async move {
+                axum::serve(listener, app)
+                    .await
+                    .expect("Server failed during test");
+            });
+
+            // Give the server a moment to start up.
+            sleep(Duration::from_millis(100)).await;
+
+            // Create and return the test client.
+            Arc::new(
+                httpc_test::new_client("http://127.0.0.1:8081")
+                    .expect("Failed to create test client"),
+            )
+        }
+
+        TEST_CLIENT.get_or_init(setup).await.clone()
     }
 
-    // #[fixture]
-    // #[once]
-    // fn test_router() -> Router {
-    //     dotenv().ok();
-    //     let db_url = std::env::var("DATABASE_URL_TEST").unwrap();
-    //     let db_config = DbConfig { url: db_url };
-    //     let pool = block_on!(async { connect_to_postgres(db_config).await.unwrap() });
-    //     app(pool)
-    // }
     #[rstest]
-    #[tokio::test]
-    async fn test_get_blog() {
-        // let router = test_router().with_state(());
-        // let response = router
-        //     .oneshot(
-        //         Request::builder()
-        //             .uri("/blogs/1")
-        //             .body(axum::body::Body::empty())
-        //             .unwrap(),
-        //     )
-        //     .await
-        //     .unwrap();
-        // assert_eq!(response.status(), axum::http::StatusCode::OK);
-    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_get_blogs() {
+        let client = get_test_client().await;
+        let response = client
+            .do_get("/blogs")
+            .await
+            .expect("GET /blogs should work fine");
 
-    // async fn not_found() {
-    //     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    //     let body = response.into_body().collect().await.unwrap().to_bytes();
-    //     assert!(body.is_empty());
-    // }
+        // response.print().await.ok();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }
