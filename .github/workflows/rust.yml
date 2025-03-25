@@ -1,0 +1,59 @@
+name: Rust
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: Rust
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start production database
+        run: |
+          docker run --name rust-postgres-db \
+          -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} \
+          -e POSTGRES_USER=${{ secrets.DB_USER }} \
+          -e POSTGRES_DB=blogs \
+          -p 5432:5432 \
+          -d postgres:11.5-alpine
+
+      - name: Start test database
+        run: |
+          docker run --name rust-postgres-db-test \
+            -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            -e POSTGRES_USER=${{ secrets.DB_USER }} \
+            -e POSTGRES_DB=blogs-test \
+            -p 5433:5432 \
+            -d postgres:11.5-alpine
+
+      - name: Install sqlx CLI
+        run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run migrations on production database
+        run: |
+          sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/blogs
+
+      - name: Run migrations on test database
+        run: |
+          sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5433/blogs-test
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Cleanup databases
+        if: always()
+        run: |
+          docker stop rust-postgres-db rust-postgres-db-test
+          docker rm rust-postgres-db rust-postgres-db-test
