@@ -1,5 +1,4 @@
-use axum::routing::get;
-use sqlx::{database, postgres::PgRow, PgPool};
+use sqlx::PgPool;
 
 use crate::models::{Blog, BlogPostPayload};
 
@@ -8,7 +7,7 @@ use crate::models::{Blog, BlogPostPayload};
 /// # Returns
 ///
 /// Returns a list of PgRows containing Blogs
-pub async fn insert_test_values(pool: &PgPool) -> Result<Vec<Blog>, sqlx::Error> {
+pub async fn _insert_test_values(pool: &PgPool) -> Result<Vec<Blog>, sqlx::Error> {
     // insert test entries
     let blogs = vec![
         BlogPostPayload {

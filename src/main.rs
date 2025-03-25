@@ -78,7 +78,7 @@ mod tests {
     use crate::{
         app,
         config::{get_db_url, AppStateInner},
-        test_helper::{create_blogs_table, empty_blogs_table, insert_test_values},
+        test_helper::{create_blogs_table, empty_blogs_table},
     };
     use axum::http::StatusCode;
     use httpc_test::{self, Client};
@@ -125,10 +125,12 @@ mod tests {
         Arc::new(AppStateInner::new(db_url).await)
     }
 
-    async fn get_test_server() -> Arc<AppStateInner> {
+    #[fixture]
+    async fn test_server() -> Arc<AppStateInner> {
         TEST_SERVER.get_or_init(setup_server).await.clone()
     }
-    async fn get_test_client() -> Arc<Client> {
+    #[fixture]
+    async fn test_client() -> Arc<Client> {
         TEST_CLIENT.get_or_init(setup_client).await.clone()
     }
 
@@ -168,19 +170,22 @@ mod tests {
     // return value is an empty array if the database is empty
     // or returns 404 if single blog is requested
     #[rstest]
-    #[case("/blogs", json!([]), StatusCode::OK)]
-    #[case("/blogs/1", json!({"message": "Failed to retrieve blog"}), StatusCode::INTERNAL_SERVER_ERROR)]
+    #[case::get_blogs_1("/blogs/1", json!({"message": "Failed to retrieve blog"}), StatusCode::INTERNAL_SERVER_ERROR)]
+    #[case::get_blogs("/blogs", json!([]), StatusCode::OK)]
     #[tokio::test]
     async fn get_blogs_empty_db(
         #[case] endpoint: &str,
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
+        #[future] test_server: Arc<AppStateInner>,
+        #[future] test_client: Arc<Client>,
     ) {
-        let client = get_test_client().await;
-        let server = get_test_server().await;
-        empty_blogs_table(&server.pool).await.ok();
+        // let client = get_test_client().await;
+        // let server = get_test_server().await;
+        empty_blogs_table(&test_server.await.pool).await.ok();
 
-        let response = client
+        let response = test_client
+            .await
             .do_get(endpoint)
             .await
             .expect("Expected to get a response from GET /blogs");
@@ -188,6 +193,9 @@ mod tests {
         let body = response.json_body().expect("Expected body to be defined");
         assert_eq!(expected, body);
         assert_eq!(expected_status_code, response.status());
+
+        // necessary to wait for the server
+        sleep(Duration::from_millis(200)).await;
     }
 
     // blogs are returned as json and are the correct amount
