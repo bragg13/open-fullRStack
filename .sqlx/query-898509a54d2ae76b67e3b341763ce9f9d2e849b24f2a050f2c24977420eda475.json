@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
+  "query": "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4::int WHERE id = $5 RETURNING id, title, author, url, likes",
   "describe": {
     "columns": [
       {
@@ -43,8 +43,8 @@
       false,
       false,
       false,
-      true
+      false
     ]
   },
-  "hash": "90afd62f33f8a49b242630d51c410233708e8f7a46b4e7fd3bcad325d6c6f4d3"
+  "hash": "898509a54d2ae76b67e3b341763ce9f9d2e849b24f2a050f2c24977420eda475"
 }

@@ -4,6 +4,6 @@ CREATE TABLE blogs (
     title TEXT NOT NULL,
     author TEXT NOT NULL,
     url TEXT NOT NULL,
-    likes INT NULL DEFAULT 0,
+    likes INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW ()
 );

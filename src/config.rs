@@ -24,7 +24,7 @@ pub fn get_db_url(is_test: bool) -> String {
     dotenv().ok();
     let mut db_name = std::env::var("DB_NAME").expect("Could not read env variable DB_NAME");
     if is_test {
-        db_name = db_name + "_test";
+        db_name = db_name + "-test";
     }
     let db_psw = std::env::var("DB_PASSWORD").expect("Could not read env variable DB_PASSWORD");
     let db_user = std::env::var("DB_USER").expect("Could not read env variable DB_USER");

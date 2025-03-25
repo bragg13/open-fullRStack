@@ -11,13 +11,13 @@ use tracing::error;
 use crate::{
     config::AppStateInner,
     errors::ClientError,
-    models::{Blog, UpdateBlogRequestPayload},
+    models::{Blog, BlogPostPayload, BlogUpdatePayload},
 };
 
 /// Create a new blog
 ///
 /// Creates a new blog in the database, returns the created blog
-#[utoipa::path(post, path = "/blogs", request_body = Blog,
+#[utoipa::path(post, path = "/blogs", request_body = BlogPostPayload,
     responses(
             (status = 500, description = "Internal server error", body=ClientError),
             (status = 201, description = "Blog created successfully", body=Blog)
@@ -25,9 +25,10 @@ use crate::{
 )]
 pub async fn create_blog(
     State(state): State<Arc<AppStateInner>>,
-    Json(body): Json<Blog>,
+    Json(body): Json<BlogPostPayload>,
 ) -> impl IntoResponse {
     let pool = &state.pool;
+    let likes = body.likes.unwrap_or(0);
 
     match sqlx::query_as!(
         Blog,
@@ -35,7 +36,7 @@ pub async fn create_blog(
         body.title,
         body.author,
         body.url,
-        body.likes
+        likes
     )
     .fetch_one(pool)
     .await
@@ -100,7 +101,7 @@ pub async fn get_blog(
     let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
-        "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
+        "SELECT id, title, author, url, likes FROM blogs WHERE id = $1::int",
         id
     )
     .fetch_one(pool)
@@ -126,7 +127,7 @@ pub async fn get_blog(
 #[utoipa::path(
     put,
     path = "/blogs/{id}",
-    request_body = UpdateBlogRequestPayload,
+    request_body = BlogUpdatePayload,
     responses(
         (status = 500, description = "Internal server error", body=ClientError),
         (status = 200, description = "Blog updated successfully", body=Blog)
@@ -135,12 +136,12 @@ pub async fn get_blog(
 pub async fn update_blog(
     State(state): State<Arc<AppStateInner>>,
     Path(id): Path<i32>,
-    Json(body): Json<UpdateBlogRequestPayload>,
+    Json(body): Json<BlogUpdatePayload>,
 ) -> impl IntoResponse {
     let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
-        "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4 WHERE id = $5 RETURNING id, title, author, url, likes",
+        "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4::int WHERE id = $5 RETURNING id, title, author, url, likes",
         body.title,
         body.author,
         body.url,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, title, author, url, likes FROM blogs WHERE id = $1",
+  "query": "SELECT id, title, author, url, likes FROM blogs WHERE id = $1::int",
   "describe": {
     "columns": [
       {
@@ -39,8 +39,8 @@
       false,
       false,
       false,
-      true
+      false
     ]
   },
-  "hash": "c48fbeaff1209a148304b10449cebdba074b68d59f7153e057c2d0fc124dff65"
+  "hash": "a379038a0389a569001c8e6e355d76328ad0b337a0b9b8ba5105c72dc5fafaa3"
 }
