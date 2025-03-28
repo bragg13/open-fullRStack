@@ -46,4 +46,4 @@ jobs:
       - name: Cleanup databases
         if: always()
         run: |
-          docker stop rust-postgres-db rust-postgres-db-test
+          docker stop rust-postgres-db
