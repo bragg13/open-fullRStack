@@ -26,16 +26,9 @@ jobs:
           -p 5432:5432 \
           -d postgres:11.5-alpine
 
-      - name: Install sqlx CLI
-        run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
-
       - name: Run sqlx prepare
         run: |
           cargo sqlx prepare
-
-      - name: Run migrations on production database
-        run: |
-          sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/blogs
 
       - name: Build
         run: cargo build --verbose
