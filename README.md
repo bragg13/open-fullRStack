@@ -10,13 +10,5 @@ docker run --name rust-postgres-db \
      -p 5432:5432 \
      -d postgres
 
-docker run --name rust-postgres-db-test \
-     -e POSTGRES_PASSWORD=psw \
-     -e POSTGRES_USER=usr \
-     -e POSTGRES_DB=blogs-test \
-     -p 5433:5432 \
-     -d postgres
-
 sqlx migrate run --database-url postgres://usr:psw@localhost:5432/blogs
-sqlx migrate run --database-url postgres://usr:psw@localhost:5433/blogs-test
 ```
