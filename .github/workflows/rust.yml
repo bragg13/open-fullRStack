@@ -26,11 +26,11 @@ jobs:
           -p 5432:5432 \
           -d postgres:11.5-alpine
 
-      - name: Install sqlx CLI
-        run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
-
       - name: Build
         run: cargo build --verbose
+
+      - name: Install sqlx CLI
+        run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
       - name: Run sqlx prepare
         run: |
