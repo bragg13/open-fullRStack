@@ -29,6 +29,10 @@ jobs:
       - name: Install sqlx CLI
         run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
+      - name: Run migrations on production database
+        run: |
+          sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/blogs
+
       - name: Run sqlx prepare
         run: |
           cargo sqlx prepare
