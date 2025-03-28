@@ -1,4 +1,6 @@
 -- Add migration script here
+DROP TABLE IF EXISTS blogs;
+
 CREATE TABLE blogs (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,

@@ -1,11 +1,4 @@
-use std::sync::Arc;
-
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    Extension, Json,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
 use sqlx::PgPool;
 use tracing::error;
 
@@ -194,7 +187,8 @@ pub async fn delete_blog(
 
 #[cfg(test)]
 mod blog_api_test {
-    use crate::{app, config::get_postgres_pool, test_helper::empty_blogs_table};
+    use crate::test_helper::insert_test_values;
+    use crate::{app, config::get_postgres_pool, test_helper::get_test_blogs};
     use axum::http::StatusCode;
     use axum_test::TestServer;
     use rstest::*;
@@ -215,144 +209,72 @@ mod blog_api_test {
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
     ) {
-        let container = Postgres::default()
-            .with_password("couchpotato")
-            .with_user("postgres")
-            .with_db_name("blogs-test")
-            .start()
-            .await
-            .unwrap();
-
+        // create test container
+        let container = Postgres::default().start().await.unwrap();
         let db_url = format!(
             "postgresql://postgres:postgres@localhost:{}/postgres",
             container.get_host_port_ipv4(5432).await.unwrap()
         );
-        let db = PgPoolOptions::new()
-            .connect(&format!(
-                "postgresql://postgres:postgres@localhost:{}/postgres",
-                container.get_host_port_ipv4(5432).await.unwrap()
-            ))
-            .await
-            .unwrap();
 
+        // connect to db pool
+        let pool = get_postgres_pool(db_url.clone()).await;
+        let db = PgPoolOptions::new().connect(&db_url).await.unwrap();
         migrate!("./migrations").run(&db).await.unwrap();
 
-        let pool = get_postgres_pool(db_url).await;
+        // create server
         let app = app(pool.clone()).await;
-        empty_blogs_table(&pool).await.ok();
-
         let server = TestServer::new(app).unwrap();
+
+        // perform request
         let response = server.get(endpoint).await;
         let body: Value = response.json();
 
         response.assert_status(expected_status_code);
         assert_eq!(expected, body);
 
+        // cleanup
         container.rm().await.unwrap();
     }
 
     // blogs are returned as json and are the correct amount
     #[rstest]
-    #[case::get_single_blog("/blogs/1", json!({
-        "id": 1,
-        "title": "React patterns",
-                "author": "Michael Chan",
-                "url": "https://reactpatterns.com/",
-                "likes": 7,
-            }), StatusCode::OK)]
-    #[case::get_multiple_blogs("/blogs", json!([
-        {
-            "id": 1,
-        "title": "React patterns".to_string(),
-            "author": "Michael Chan".to_string(),
-            "url": "https://reactpatterns.com/".to_string(),
-            "likes": 7
-        },
-
-        {
-            "id": 2,
-        "title": "Go To Statement Considered Harmful".to_string(),
-            "author": "Edsger W. Dijkstra".to_string(),
-            "url": "http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.html".to_string(),
-            "likes": 5
-
-        },
-        {
-            "id": 3,
-            "title": "Canonical string reduction".to_string(),
-            "author": "Edsger W. Dijkstra".to_string(),
-            "url": "http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html".to_string(),
-            "likes": 12,
-        },
-        {
-            "id": 4,
-            "title": "TDD harms architecture".to_string(),
-            "author": "Robert C. Martin".to_string(),
-            "url": "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html".to_string(),
-            "likes": 10,
-        },
-        {
-            "id": 5,
-            "title": "Type wars".to_string(),
-            "author": "Robert C. Martin".to_string(),
-            "url": "http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html".to_string(),
-            "likes": 0
-        },
-        {
-            "id": 6,
-            "title": "First class tests".to_string(),
-            "author": "Robert C. Martin".to_string(),
-            "url": "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html".to_string(),
-            "likes": 2
-        },
-
-    ]), StatusCode::OK)]
+    #[case::get_single_blog("/blogs/1", json!(
+        get_test_blogs()[0]
+        ), StatusCode::OK)]
+    #[case::get_multiple_blogs("/blogs", json!(get_test_blogs()), StatusCode::OK)]
     #[tokio::test]
     async fn get_blogs_correct_json_fields(
         #[case] endpoint: &str,
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
     ) {
-        use crate::test_helper::insert_test_values;
-
-        let container = Postgres::default()
-            .with_password("couchpotato")
-            .with_user("postgres")
-            .with_db_name("blogs-test")
-            .start()
-            .await
-            .unwrap();
-
+        // create test container
+        let container = Postgres::default().start().await.unwrap();
         let db_url = format!(
             "postgresql://postgres:postgres@localhost:{}/postgres",
             container.get_host_port_ipv4(5432).await.unwrap()
         );
-        let db = PgPoolOptions::new()
-            .connect(&format!(
-                "postgresql://postgres:postgres@localhost:{}/postgres",
-                container.get_host_port_ipv4(5432).await.unwrap()
-            ))
-            .await
-            .unwrap();
 
+        // connect to db pool
+        let pool = get_postgres_pool(db_url.clone()).await;
+        let db = PgPoolOptions::new().connect(&db_url).await.unwrap();
         migrate!("./migrations").run(&db).await.unwrap();
-
-        let pool = get_postgres_pool(db_url).await;
-        let app = app(pool.clone()).await;
-
-        // prepare database
-        empty_blogs_table(&pool).await.ok();
-        let blogs = insert_test_values(&pool)
+        insert_test_values(&pool)
             .await
             .expect("Expected insert statement to work");
 
-        // perform request
+        // create server
+        let app = app(pool.clone()).await;
         let server = TestServer::new(app).unwrap();
+
+        // perform request
         let response = server.get(endpoint).await;
         let body: Value = response.json();
 
         response.assert_status(expected_status_code);
         assert_eq!(expected, body);
+
+        // cleanup
         container.rm().await.unwrap();
     }
 }

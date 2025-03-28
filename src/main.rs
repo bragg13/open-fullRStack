@@ -7,7 +7,7 @@ use blogs_api::{create_blog, delete_blog, get_blog, get_blogs, update_blog};
 use config::{get_db_url, get_postgres_pool};
 use models::{Blog, BlogUpdatePayload};
 use sqlx::PgPool;
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 use tracing::{error, info, Level};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -17,7 +17,6 @@ mod errors;
 mod models;
 #[cfg(test)]
 mod test_helper;
-use tower::ServiceExt;
 
 #[derive(OpenApi)]
 #[openapi(
