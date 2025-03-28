@@ -26,28 +26,19 @@ jobs:
           -p 5432:5432 \
           -d postgres:11.5-alpine
 
-      - name: Start test database
-        run: |
-          docker run --name rust-postgres-db-test \
-            -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} \
-            -e POSTGRES_USER=${{ secrets.DB_USER }} \
-            -e POSTGRES_DB=blogs-test \
-            -p 5433:5432 \
-            -d postgres:11.5-alpine
-
       - name: Install sqlx CLI
         run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
       - name: Build
         run: cargo build --verbose
 
+      - name: Run sqlx prepare
+        run: |
+          cargo sqlx prepare
+
       - name: Run migrations on production database
         run: |
           sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/blogs
-
-      - name: Run migrations on test database
-        run: |
-          sqlx migrate run --database-url postgres://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5433/blogs-test
 
       - name: Run tests
         run: cargo test --verbose
@@ -56,4 +47,3 @@ jobs:
         if: always()
         run: |
           docker stop rust-postgres-db rust-postgres-db-test
-          docker rm rust-postgres-db rust-postgres-db-test
