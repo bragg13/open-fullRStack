@@ -1,11 +1,12 @@
 use axum::{
     response::{Html, IntoResponse},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use blogs_api::{create_blog, delete_blog, get_blog, get_blogs, update_blog};
-use config::{get_db_url, AppStateInner};
+use config::{get_db_url, get_postgres_pool};
 use models::{Blog, BlogUpdatePayload};
+use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tracing::{error, info, Level};
 use utoipa::OpenApi;
@@ -16,6 +17,7 @@ mod errors;
 mod models;
 #[cfg(test)]
 mod test_helper;
+use tower::ServiceExt;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -41,9 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     let db_url = get_db_url(false);
-    let state = Arc::new(AppStateInner::new(db_url).await);
-    let app = app().await;
-    let app = app.with_state(state);
+    let pool = get_postgres_pool(db_url).await;
+    let app = app(pool).await;
 
     // starting the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
@@ -57,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn app() -> Router<Arc<AppStateInner>> {
+async fn app(pool: PgPool) -> Router {
     Router::new()
         .without_v07_checks()
         .route("/", get(index))
@@ -67,6 +68,7 @@ async fn app() -> Router<Arc<AppStateInner>> {
         )
         .route("/blogs", get(get_blogs).post(create_blog))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .layer(Extension(pool))
 }
 
 async fn index() -> impl IntoResponse {
@@ -75,64 +77,62 @@ async fn index() -> impl IntoResponse {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::get_postgres_pool;
     use crate::{
         app,
-        config::{get_db_url, AppStateInner},
         test_helper::{create_blogs_table, empty_blogs_table},
     };
     use axum::http::StatusCode;
+    use axum_test::TestServer;
     use httpc_test::{self, Client};
     use rstest::*;
     use serde_json::{json, Value};
-    use std::{sync::Arc, time::Duration};
-    use tokio::{net::TcpListener, sync::OnceCell, time::sleep};
-    static TEST_CLIENT: OnceCell<Arc<Client>> = OnceCell::const_new();
-    static TEST_SERVER: OnceCell<Arc<AppStateInner>> = OnceCell::const_new();
+    use sqlx::{migrate, postgres::PgPoolOptions};
+    use std::sync::Arc;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::postgres::Postgres;
+    use tower::ServiceExt;
 
-    async fn setup_client() -> Arc<Client> {
-        Arc::new(
-            httpc_test::new_client("http://127.0.0.1:8080").expect("Failed to create test client"),
-        )
-    }
-    async fn setup_server() -> Arc<AppStateInner> {
-        // Bind the server to a test port.
-        let listener = TcpListener::bind("127.0.0.1:8080")
-            .await
-            .expect("Failed to bind to test port");
+    // async fn setup_client() -> Arc<Client> {
+    //     Arc::new(
+    //         httpc_test::new_client("http://127.0.0.1:8080").expect("Failed to create test client"),
+    //     )
+    // }
 
-        // Create the state and app.
-        let db_url = get_db_url(true);
-        let state = Arc::new(AppStateInner::new(db_url).await);
-        match create_blogs_table(&state.pool).await {
-            Ok(_) => println!("DB initialised."),
-            Err(e) => println!("Error: {e}"),
-        }
+    // async fn setup_server() -> Arc<AppStateInner> {
+    //     // Bind the server to a test port.
+    //     let listener = TcpListener::bind("127.0.0.1:8080")
+    //         .await
+    //         .expect("Failed to bind to test port");
 
-        let app = app().await.with_state(state);
+    //     // Create the state and app.
+    //     let db_url = get_db_url(true);
+    //     let state = Arc::new(AppStateInner::new(db_url).await);
+    //     match create_blogs_table(&state.pool).await {
+    //         Ok(_) => println!("DB initialised."),
+    //         Err(e) => println!("Error: {e}"),
+    //     }
 
-        // Spawn the server in the background.
-        tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("Server failed during test");
-        });
+    //     let app = app().await.with_state(state.clone());
 
-        // Give the server a moment to start up.
-        sleep(Duration::from_millis(100)).await;
+    //     // Spawn the server in the background.
+    //     tokio::spawn(async move {
+    //         axum::serve(listener, app)
+    //             .await
+    //             .expect("Server failed during test");
+    //     });
 
-        // returns another state
-        let db_url = get_db_url(true);
-        Arc::new(AppStateInner::new(db_url).await)
-    }
+    //     // Give the server a moment to start up.
+    //     sleep(Duration::from_millis(100)).await;
 
-    #[fixture]
-    async fn test_server() -> Arc<AppStateInner> {
-        TEST_SERVER.get_or_init(setup_server).await.clone()
-    }
-    #[fixture]
-    async fn test_client() -> Arc<Client> {
-        TEST_CLIENT.get_or_init(setup_client).await.clone()
-    }
+    //     state
+    // }
+    // async fn test_client() -> Arc<Client> {
+    //     TEST_CLIENT.get_or_init(setup_client).await.clone()
+    // }
+    // async fn test_server() -> Arc<AppStateInner> {
+    //     TEST_SERVER.get_or_init(setup_server).await.clone()
+    // }
 
     // test('blog without likes field defaults to zero', async () => {
     // test('a new blog can be correctly added via POST', async () => {
@@ -172,74 +172,163 @@ mod tests {
     #[rstest]
     #[case::get_blogs_1("/blogs/1", json!({"message": "Failed to retrieve blog"}), StatusCode::INTERNAL_SERVER_ERROR)]
     #[case::get_blogs("/blogs", json!([]), StatusCode::OK)]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn get_blogs_empty_db(
         #[case] endpoint: &str,
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
-        #[future] test_server: Arc<AppStateInner>,
-        #[future] test_client: Arc<Client>,
     ) {
-        // let client = get_test_client().await;
-        // let server = get_test_server().await;
-        empty_blogs_table(&test_server.await.pool).await.ok();
+        // let db_url = format!(
+        //     "postgres://postgres:potatocouch@127.0.0.1:{}/blogs-test",
+        //     node.get_host_port_ipv4(5432).await.unwrap()
+        // );
 
-        let response = test_client
+        let container = Postgres::default()
+            .with_password("couchpotato")
+            .with_user("postgres")
+            .with_db_name("blogs-test")
+            .start()
             .await
-            .do_get(endpoint)
-            .await
-            .expect("Expected to get a response from GET /blogs");
+            .unwrap();
 
-        let body = response.json_body().expect("Expected body to be defined");
+        let db_url = format!(
+            "postgresql://postgres:couchpotato@localhost:{}/blogs-test",
+            container.get_host_port_ipv4(5432).await.unwrap()
+        );
+        let db = PgPoolOptions::new()
+            .connect(&format!(
+                "postgresql://postgres:couchpotato@localhost:{}/blogs-test",
+                container.get_host_port_ipv4(5432).await.unwrap()
+            ))
+            .await
+            .unwrap();
+
+        migrate!("./migrations").run(&db).await.unwrap();
+
+        // assert_eq!(true, true);
+        // let mut conn = postgres::Client::connect(connection_string, postgres::NoTls).unwrap();
+        // let rows = conn.query("SELECT 1 + 1", &[]).unwrap();
+
+        // let db_url = get_db_url(true);
+        let pool = get_postgres_pool(db_url).await;
+        let app = app(pool.clone()).await;
+
+        // setup db
+        // create_blogs_table(&pool)
+        //     .await
+        //     .expect("expected database to be initialised correctly");
+
+        empty_blogs_table(&pool).await.ok();
+
+        let server = TestServer::new(app).unwrap();
+        let response = server.get(endpoint).await;
+        let body: Value = response.json();
+
+        response.assert_status(expected_status_code);
         assert_eq!(expected, body);
-        assert_eq!(expected_status_code, response.status());
-
-        // necessary to wait for the server
-        sleep(Duration::from_millis(200)).await;
     }
 
     // blogs are returned as json and are the correct amount
-    // #[rstest]
-    // #[case::single_blog("/blogs/1", json!([]))]
-    // #[case::multiple_blogs("/blogs", json!([]))]
-    // #[tokio::test]
-    // async fn get_blogs_correct_json_fields(#[case] endpoint: &str, #[case] expected: Value) {
-    //     let client = get_test_client().await;
-    //     let server = get_test_server().await;
+    #[rstest]
+    #[case::get_single_blog("/blogs/1", json!({
+        "id": 1,
+        "title": "React patterns",
+                "author": "Michael Chan",
+                "url": "https://reactpatterns.com/",
+                "likes": 7,
+            }), StatusCode::OK)]
+    #[case::get_multiple_blogs("/blogs", json!([
+        {
+            "id": 1,
+        "title": "React patterns".to_string(),
+            "author": "Michael Chan".to_string(),
+            "url": "https://reactpatterns.com/".to_string(),
+            "likes": 7
+        },
+        {
+            "id": 2,
+        "title": "Go To Statement Considered Harmful".to_string(),
+            "author": "Edsger W. Dijkstra".to_string(),
+            "url": "http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.html".to_string(),
+            "likes": 5
+        },
+        {
+            "id": 3,
+            "title": "Canonical string reduction".to_string(),
+            "author": "Edsger W. Dijkstra".to_string(),
+            "url": "http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html".to_string(),
+            "likes": 12,
+        },
+        {
+            "id": 4,
+            "title": "TDD harms architecture".to_string(),
+            "author": "Robert C. Martin".to_string(),
+            "url": "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html".to_string(),
+            "likes": 10,
+        },
+        {
+            "id": 5,
+            "title": "Type wars".to_string(),
+            "author": "Robert C. Martin".to_string(),
+            "url": "http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html".to_string(),
+            "likes": 0
+        },
+        {
+            "id": 6,
+            "title": "First class tests".to_string(),
+            "author": "Robert C. Martin".to_string(),
+            "url": "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html".to_string(),
+            "likes": 2
+        },
 
-    //     empty_blogs_table(&server.pool).await.ok();
-    //     let blogs = insert_test_values(&server.pool)
-    //         .await
-    //         .expect("Expected insert statement to work");
-    //     println!("blogs: {:?}", blogs);
+    ]), StatusCode::OK)]
+    #[tokio::test]
+    async fn get_blogs_correct_json_fields(
+        #[case] endpoint: &str,
+        #[case] expected: Value,
+        #[case] expected_status_code: StatusCode,
+    ) {
+        use crate::test_helper::insert_test_values;
 
-    //     let response = client
-    //         .do_get(endpoint)
-    //         .await
-    //         .expect("Expected GET /blogs to work");
+        let container = Postgres::default()
+            .with_password("couchpotato")
+            .with_user("postgres")
+            .with_db_name("blogs-test")
+            .start()
+            .await
+            .unwrap();
 
-    //     let body = response.json_body().expect("Expected body to be defined");
-    //     assert_eq!(expected, body)
-    // }
-    // TODO find a way to convert from &PgRow to Blog vector
-    // let blogs: Vec<Blog> = blogs.iter().map(|el| Blog { id: todo!(), title: todo!(), author: todo!(), url: todo!(), likes: todo!() }}).collect();
+        let db_url = format!(
+            "postgresql://postgres:couchpotato@localhost:{}/blogs-test",
+            container.get_host_port_ipv4(5432).await.unwrap()
+        );
+        let db = PgPoolOptions::new()
+            .connect(&format!(
+                "postgresql://postgres:couchpotato@localhost:{}/blogs-test",
+                container.get_host_port_ipv4(5432).await.unwrap()
+            ))
+            .await
+            .unwrap();
 
-    // let response = client
-    //     .do_get("/blogs")
-    //     .await
-    //     .expect("Expected GET /blogs to return 6 blogs");
+        migrate!("./migrations").run(&db).await.unwrap();
 
-    // // get single blog given id - AND with wrong id AND missing ID
-    // let response = client
-    //     .do_get("/blogs")
-    //     .await
-    //     .expect("Expected GET /blogs to return []");
+        let pool = get_postgres_pool(db_url).await;
+        let app = app(pool.clone()).await;
 
-    // let body = response.json_body().expect("Expected body to be defined");
-    // assert_eq!(json!([]), body);
+        // prepare database
+        empty_blogs_table(&pool).await.ok();
+        let blogs = insert_test_values(&pool)
+            .await
+            .expect("Expected insert statement to work");
 
-    // let body = response.json_body().expect("Expected body to be defined");
-    // assert_eq!(body.)
+        // perform request
+        let server = TestServer::new(app).unwrap();
+        let response = server.get(endpoint).await;
+        let body: Value = response.json();
+
+        response.assert_status(expected_status_code);
+        assert_eq!(expected, body);
+    }
 
     // #[rstest]
     // #[tokio::test]

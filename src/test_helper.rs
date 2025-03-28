@@ -1,3 +1,4 @@
+#[allow(unused)]
 use sqlx::PgPool;
 
 use crate::models::{Blog, BlogPostPayload};
@@ -7,7 +8,7 @@ use crate::models::{Blog, BlogPostPayload};
 /// # Returns
 ///
 /// Returns a list of PgRows containing Blogs
-pub async fn _insert_test_values(pool: &PgPool) -> Result<Vec<Blog>, sqlx::Error> {
+pub async fn insert_test_values(pool: &PgPool) -> Result<Vec<Blog>, sqlx::Error> {
     // insert test entries
     let blogs = vec![
         BlogPostPayload {
@@ -80,10 +81,11 @@ pub async fn _insert_test_values(pool: &PgPool) -> Result<Vec<Blog>, sqlx::Error
     Ok(res)
 }
 
-pub async fn empty_blogs_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM TABLE if exists blogs")
-        .execute(pool)
-        .await?;
+pub async fn empty_blogs_table<'e, E>(executor: E) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    sqlx::query("DELETE FROM blogs").execute(executor).await?;
     Ok(())
 }
 

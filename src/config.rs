@@ -4,20 +4,29 @@ use tracing::info;
 
 // A state is a struct that implements Clone.
 // It has to implement Clone because Axum clones it for every handler call.
-pub struct AppStateInner {
-    pub pool: PgPool,
-}
+// pub struct AppStateInner {
+//     pub pool: PgPool,
+// }
 
-impl AppStateInner {
-    pub async fn new(db_url: String) -> Self {
-        println!("{}", db_url);
-        let pool = PgPoolOptions::new()
-            .connect(&db_url)
-            .await
-            .expect("Error connecting to database");
-        info!("Connected to Database.");
-        Self { pool }
-    }
+// impl AppStateInner {
+//     pub async fn new(db_url: String) -> Self {
+//         println!("{}", db_url);
+//         let pool = PgPoolOptions::new()
+//             .connect(&db_url)
+//             .await
+//             .expect("Error connecting to database");
+//         info!("Connected to Database.");
+//         Self { pool }
+//     }
+// }
+
+pub async fn get_postgres_pool(db_url: String) -> PgPool {
+    let pool = PgPoolOptions::new()
+        .connect(&db_url)
+        .await
+        .expect("Error connecting to database");
+    info!("Connected to Database.");
+    pool
 }
 
 pub fn get_db_url(is_test: bool) -> String {

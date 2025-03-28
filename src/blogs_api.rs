@@ -4,12 +4,12 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
+    Extension, Json,
 };
+use sqlx::PgPool;
 use tracing::error;
 
 use crate::{
-    config::AppStateInner,
     errors::ClientError,
     models::{Blog, BlogPostPayload, BlogUpdatePayload},
 };
@@ -24,10 +24,9 @@ use crate::{
         )
 )]
 pub async fn create_blog(
-    State(state): State<Arc<AppStateInner>>,
+    Extension(pool): Extension<PgPool>,
     Json(body): Json<BlogPostPayload>,
 ) -> impl IntoResponse {
-    let pool = &state.pool;
     let likes = body.likes.unwrap_or(0);
 
     match sqlx::query_as!(
@@ -38,7 +37,7 @@ pub async fn create_blog(
         body.url,
         likes
     )
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     {
         Ok(blog) =>
@@ -62,11 +61,9 @@ pub async fn create_blog(
         (status = 200, description = "Blogs retrieved successfully", body=[Blog])
     )
 )]
-pub async fn get_blogs(State(state): State<Arc<AppStateInner>>) -> impl IntoResponse {
-    let pool = &state.pool;
-
+pub async fn get_blogs(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
     match sqlx::query_as!(Blog, "SELECT id, title, author, url, likes FROM blogs")
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
     {
         Ok(blogs) => (StatusCode::OK, Json(blogs)).into_response(),
@@ -95,16 +92,15 @@ pub async fn get_blogs(State(state): State<Arc<AppStateInner>>) -> impl IntoResp
     )
 )]
 pub async fn get_blog(
-    State(state): State<Arc<AppStateInner>>,
+    Extension(pool): Extension<PgPool>,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
-    let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
         "SELECT id, title, author, url, likes FROM blogs WHERE id = $1::int",
         id
     )
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     {
         Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
@@ -134,11 +130,10 @@ pub async fn get_blog(
     )
 )]
 pub async fn update_blog(
-    State(state): State<Arc<AppStateInner>>,
+    Extension(pool): Extension<PgPool>,
     Path(id): Path<i32>,
     Json(body): Json<BlogUpdatePayload>,
 ) -> impl IntoResponse {
-    let pool = &state.pool;
     match sqlx::query_as!(
         Blog,
         "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4::int WHERE id = $5 RETURNING id, title, author, url, likes",
@@ -148,7 +143,7 @@ pub async fn update_blog(
         body.likes,
         id
     )
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await {
         Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
         Err(e) => {
@@ -176,12 +171,11 @@ pub async fn update_blog(
     )
 )]
 pub async fn delete_blog(
-    State(state): State<Arc<AppStateInner>>,
+    Extension(pool): Extension<PgPool>,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
-    let pool = &state.pool;
     match sqlx::query!("DELETE FROM blogs WHERE id = $1", id)
-        .execute(pool)
+        .execute(&pool)
         .await
     {
         Ok(_) => (StatusCode::OK, Json({})).into_response(),
