@@ -1,5 +1,5 @@
 use axum::{
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Response},
     routing::get,
     Extension, Router,
 };
@@ -60,6 +60,7 @@ async fn app(pool: PgPool) -> Router {
     Router::new()
         .without_v07_checks()
         .route("/", get(index))
+        .route("/health_check", get(health_check))
         .merge(blog_router)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
         .layer(Extension(pool))
@@ -67,4 +68,10 @@ async fn app(pool: PgPool) -> Router {
 
 async fn index() -> impl IntoResponse {
     Html("<h1>Ciao mondo!</h1>")
+}
+
+#[axum::debug_handler]
+async fn health_check() -> Response {
+    info!("Health check!");
+    Response::default()
 }
