@@ -2,6 +2,14 @@
 name = "part4-bloglist"
 version = "0.1.0"
 edition = "2021"
+authors = ["Andrea Bragante <andrea.bragante00@gmail.com>"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "fullrstack"
 
 [dependencies]
 tokio = { version = "1.44.1", features = [
