@@ -1,47 +1,7 @@
+use crate::{errors::ClientError, models::Blog};
 use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
 use sqlx::PgPool;
 use tracing::error;
-
-use crate::{
-    errors::ClientError,
-    models::{Blog, BlogPostPayload, BlogUpdatePayload},
-};
-
-/// Create a new blog
-///
-/// Creates a new blog in the database, returns the created blog
-#[utoipa::path(post, path = "/blogs", request_body = BlogPostPayload,
-    responses(
-            (status = 500, description = "Internal server error", body=ClientError),
-            (status = 201, description = "Blog created successfully", body=Blog)
-        )
-)]
-pub async fn create_blog(
-    Extension(pool): Extension<PgPool>,
-    Json(body): Json<BlogPostPayload>,
-) -> impl IntoResponse {
-    let likes = body.likes.unwrap_or(0);
-
-    match sqlx::query_as!(
-        Blog,
-        "INSERT INTO blogs (title, author, url, likes) VALUES ($1, $2, $3, $4) RETURNING id, title, author, url, likes",
-        body.title,
-        body.author,
-        body.url,
-        likes
-    )
-    .fetch_one(&pool)
-    .await
-    {
-        Ok(blog) =>
-            (StatusCode::CREATED, Json(blog) ).into_response()
-        ,
-        Err(e) => {
-            error!("Failed to create blog: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ClientError {message: "Failed to create blog".to_string()})).into_response()
-        }
-    }
-}
 
 /// Get all blogs
 ///
@@ -78,7 +38,7 @@ pub async fn get_blogs(Extension(pool): Extension<PgPool>) -> impl IntoResponse 
 /// Returns a blog from the database given the id
 #[utoipa::path(
     get,
-    path = "/blogs/{id}",
+    path = "/blogs",
     responses(
         (status = 500, description = "Internal server error", body=ClientError),
         (status = 200, description = "Blog retrieved successfully", body=Blog)
@@ -110,85 +70,13 @@ pub async fn get_blog(
     }
 }
 
-/// Update one blog
-///
-/// Returns a blog from the database given the id
-#[utoipa::path(
-    put,
-    path = "/blogs/{id}",
-    request_body = BlogUpdatePayload,
-    responses(
-        (status = 500, description = "Internal server error", body=ClientError),
-        (status = 200, description = "Blog updated successfully", body=Blog)
-    )
-)]
-pub async fn update_blog(
-    Extension(pool): Extension<PgPool>,
-    Path(id): Path<i32>,
-    Json(body): Json<BlogUpdatePayload>,
-) -> impl IntoResponse {
-    match sqlx::query_as!(
-        Blog,
-        "UPDATE blogs SET title=$1, author=$2, url=$3, likes=$4::int WHERE id = $5 RETURNING id, title, author, url, likes",
-        body.title,
-        body.author,
-        body.url,
-        body.likes,
-        id
-    )
-    .fetch_one(&pool)
-    .await {
-        Ok(blog) => (StatusCode::OK, Json(blog)).into_response(),
-        Err(e) => {
-            error!("Failed to update blog with id={}: {}", id, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ClientError {
-                    message: "Failed to update blog".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
-}
-
-/// Delete a blog
-///
-/// Deletes a blog from the database given the id
-#[utoipa::path(
-    delete,
-    path = "/blogs/{id}",
-    responses(
-        (status = 500, description = "Failed to delete blog"),
-        (status = 200, description = "Blog deleted successfully")
-    )
-)]
-pub async fn delete_blog(
-    Extension(pool): Extension<PgPool>,
-    Path(id): Path<i32>,
-) -> impl IntoResponse {
-    match sqlx::query!("DELETE FROM blogs WHERE id = $1", id)
-        .execute(&pool)
-        .await
-    {
-        Ok(_) => (StatusCode::OK, Json({})).into_response(),
-        Err(e) => {
-            error!("Failed to delete blog with id={}: {}", id, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ClientError {
-                    message: "Failed to delete blog".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
-}
-
 #[cfg(test)]
-mod blog_api_test {
-    use crate::test_helper::insert_test_values;
-    use crate::{app, config::get_postgres_pool, test_helper::get_test_blogs};
+mod test {
+    use crate::{
+        app,
+        blog::test_helper::{get_test_blogs, insert_test_values},
+        config::get_postgres_pool,
+    };
     use axum::http::StatusCode;
     use axum_test::TestServer;
     use rstest::*;

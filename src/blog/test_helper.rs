@@ -1,7 +1,7 @@
 #[allow(unused)]
 use sqlx::PgPool;
 
-use crate::models::Blog;
+use crate::models::{Blog, BlogPostPayload};
 
 /// TODO: change this to a migration??
 /// Inserts 6 blogs in the database

@@ -3,7 +3,7 @@ use axum::{
     routing::get,
     Extension, Router,
 };
-use blogs_api::{create_blog, delete_blog, get_blog, get_blogs, update_blog};
+
 use config::{get_db_url, get_postgres_pool};
 use models::{Blog, BlogUpdatePayload};
 use sqlx::PgPool;
@@ -11,21 +11,19 @@ use std::net::SocketAddr;
 use tracing::{error, info, Level};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-mod blogs_api;
+pub mod blog;
 mod config;
 mod errors;
 mod models;
-#[cfg(test)]
-mod test_helper;
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        blogs_api::get_blogs,
-        blogs_api::get_blog,
-        blogs_api::update_blog,
-        blogs_api::delete_blog,
-        blogs_api::create_blog
+        blog::create::create_blog,
+        blog::read::get_blog,
+        blog::read::get_blogs,
+        blog::update::update_blog,
+        blog::delete::delete_blog,
     ),
     components(
         schemas(Blog,  BlogUpdatePayload)
@@ -58,76 +56,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn app(pool: PgPool) -> Router {
+    let blog_router = blog::routes();
     Router::new()
         .without_v07_checks()
         .route("/", get(index))
-        .route(
-            "/blogs/{id}",
-            get(get_blog).put(update_blog).delete(delete_blog),
-        )
-        .route("/blogs", get(get_blogs).post(create_blog))
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(blog_router)
+        .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
         .layer(Extension(pool))
 }
 
 async fn index() -> impl IntoResponse {
     Html("<h1>Ciao mondo!</h1>")
 }
-
-// test('blog without likes field defaults to zero', async () => {
-// test('a new blog can be correctly added via POST', async () => {
-// test('a new blog cannot be added if a valid token is not provided', async () => {
-// test('missing url or title in POST request should return status code 400', async () => {
-// #[rstest]
-// #[tokio::test]
-// async fn test_post_blogs() {
-//     let client = get_test_client().await;
-
-//     let blog = json!( {
-//         "author": "andrea",
-//         "title": "blog1",
-//         "url": "http://blog1.com",
-//         "likes": 10,
-//     });
-//     empty_blogs_table(&server.pool).await.ok();
-//     let blogs = insert_test_values(&server.pool)
-//         .await
-//         .expect("Expected insert statement to work");
-//     println!("{:?}", blogs);
-//     let response = client
-//         .do_post("/blogs", blog)
-//         .await
-//         .expect("Expected POST /blogs to work");
-//     assert_eq!(2, 2)
-//     // POSTing a blog without likes parameter defaults it to zero
-//     //
-//     // POSTing without any other parameter returns error
-
-//     // response.print().await.ok();
-//     // assert_eq!(response.status(), StatusCode::OK);
-// }
-
-// #[rstest]
-// #[tokio::test]
-// test('an existing blog can be correctly deleted via DELETE', async () => {
-// async fn test_delete_blogs() {
-//     let client = get_test_client().await;
-//     let server = get_test_server().await;
-
-//     // delete blog with right id
-//     //
-//     // error when id is wrong
-// }
-
-//     #[rstest]
-//     #[tokio::test]
-// test('a blog can be correctly updated via PUT', async () =>
-//     async fn test_update_blogs() {
-//         let client = get_test_client().await;
-//         let server = get_test_server().await;
-
-//         // update blog with some params
-//         // update blog with no params doesnt change anyuthing
-//         // error when id is wrong
-//     }
-// }
