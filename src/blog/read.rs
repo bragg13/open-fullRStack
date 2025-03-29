@@ -72,19 +72,10 @@ pub async fn get_blog(
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        app,
-        blog::test_helper::{get_test_blogs, insert_test_values},
-        config::get_postgres_pool,
-    };
+    use crate::blog::test_helper::test_helper::{get_test_blogs, insert_test_values, spawn_app};
     use axum::http::StatusCode;
-    use axum_test::TestServer;
     use rstest::*;
     use serde_json::{json, Value};
-    use sqlx::{migrate, postgres::PgPoolOptions};
-    use testcontainers::runners::AsyncRunner;
-    use testcontainers_modules::postgres::Postgres;
-    use tower::ServiceExt;
 
     // return value is an empty array if the database is empty
     // or returns 404 if single blog is requested
@@ -97,31 +88,27 @@ mod test {
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
     ) {
-        // create test container
-        let container = Postgres::default().start().await.unwrap();
-        let db_url = format!(
-            "postgresql://postgres:postgres@localhost:{}/postgres",
-            container.get_host_port_ipv4(5432).await.unwrap()
-        );
+        let app = spawn_app().await;
+        let client = reqwest::Client::new();
 
-        // connect to db pool
-        let pool = get_postgres_pool(db_url.clone()).await;
-        let db = PgPoolOptions::new().connect(&db_url).await.unwrap();
-        migrate!("./migrations").run(&db).await.unwrap();
+        let response = client
+            .get(&format!("{}{}", app.address, endpoint))
+            .send()
+            .await
+            .expect("Failed to execute request.");
 
-        // create server
-        let app = app(pool.clone()).await;
-        let server = TestServer::new(app).unwrap();
+        let status_code = response.status();
+        let body: Value = response
+            .json()
+            .await
+            .expect("Expected to parse response body");
 
-        // perform request
-        let response = server.get(endpoint).await;
-        let body: Value = response.json();
-
-        response.assert_status(expected_status_code);
-        assert_eq!(expected, body);
+        // Assert
+        assert_eq!(status_code, expected_status_code);
+        assert_eq!(body, expected);
 
         // cleanup
-        container.rm().await.unwrap();
+        app.container.rm().await.unwrap();
     }
 
     // blogs are returned as json and are the correct amount
@@ -136,33 +123,29 @@ mod test {
         #[case] expected: Value,
         #[case] expected_status_code: StatusCode,
     ) {
-        // create test container
-        let container = Postgres::default().start().await.unwrap();
-        let db_url = format!(
-            "postgresql://postgres:postgres@localhost:{}/postgres",
-            container.get_host_port_ipv4(5432).await.unwrap()
-        );
-
-        // connect to db pool
-        let pool = get_postgres_pool(db_url.clone()).await;
-        let db = PgPoolOptions::new().connect(&db_url).await.unwrap();
-        migrate!("./migrations").run(&db).await.unwrap();
-        insert_test_values(&pool)
+        let app = spawn_app().await;
+        let client = reqwest::Client::new();
+        insert_test_values(&app.db_pool)
             .await
             .expect("Expected insert statement to work");
 
-        // create server
-        let app = app(pool.clone()).await;
-        let server = TestServer::new(app).unwrap();
+        let response = client
+            .get(&format!("{}{}", app.address, endpoint))
+            .send()
+            .await
+            .expect("Failed to execute request.");
 
-        // perform request
-        let response = server.get(endpoint).await;
-        let body: Value = response.json();
+        let status_code = response.status();
+        let body: Value = response
+            .json()
+            .await
+            .expect("Expected to parse response body");
 
-        response.assert_status(expected_status_code);
-        assert_eq!(expected, body);
+        // Assert
+        assert_eq!(status_code, expected_status_code);
+        assert_eq!(body, expected);
 
         // cleanup
-        container.rm().await.unwrap();
+        app.container.rm().await.unwrap();
     }
 }

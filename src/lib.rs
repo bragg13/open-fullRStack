@@ -4,15 +4,14 @@ use axum::{
     Extension, Router,
 };
 
-use config::{get_db_url, get_postgres_pool};
 use models::{Blog, BlogUpdatePayload};
 use sqlx::PgPool;
-use std::net::SocketAddr;
-use tracing::{error, info};
+use tokio::net::TcpListener;
+use tracing::info;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 pub mod blog;
-mod config;
+mod configuration;
 mod errors;
 mod models;
 
@@ -34,19 +33,10 @@ mod models;
 )]
 struct ApiDoc;
 
-pub async fn run() -> Result<(), std::io::Error> {
-    let db_url = get_db_url(false);
-    let pool = get_postgres_pool(db_url).await;
-    let app = app(pool).await;
-
-    // starting the server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-    let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
-        error!("Failed to bind to address: {} ", e);
-        e
-    })?;
-    info!("Application running at {}", &addr);
-    axum::serve(listener, app.into_make_service()).await
+pub async fn run(listener: TcpListener, db_pool: PgPool) -> Result<(), std::io::Error> {
+    let app = app(db_pool).await;
+    axum::serve(listener, app.into_make_service()).await?;
+    Ok(())
 }
 
 async fn app(pool: PgPool) -> Router {
@@ -64,7 +54,6 @@ async fn index() -> impl IntoResponse {
     Html("<h1>Ciao mondo!</h1>")
 }
 
-#[axum::debug_handler]
 async fn health_check() -> Response {
     info!("Health check!");
     Response::default()
